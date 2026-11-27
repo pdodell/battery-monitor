@@ -23,7 +23,11 @@
         "title": "Battery Monitor settings",
         "data": {
           "topic": "Dashboard notification topic",
-          "threshold": "Low-battery threshold (%)"
+          "threshold": "Low-battery threshold (%)",
+          "excluded_batteries": "Battery sensors"
+        },
+        "data_description": {
+          "excluded_batteries": "Check a sensor to exclude it from monitoring. Uncheck it to resume monitoring."
         }
       }
     },

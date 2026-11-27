@@ -14,20 +14,30 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.storage import Store
 
-from .const import CONF_THRESHOLD, CONF_TOPIC, DOMAIN, NOTIFICATIONS_DOMAIN
+from .const import (
+    CONF_EXCLUDED_BATTERIES,
+    CONF_THRESHOLD,
+    CONF_TOPIC,
+    DOMAIN,
+    NOTIFICATIONS_DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(minutes=1)
 
 
-def _is_battery(state: State) -> bool:
-    return (
-        state.attributes.get(ATTR_DEVICE_CLASS) == SensorDeviceClass.BATTERY
+def async_battery_states(hass: HomeAssistant) -> dict[str, State]:
+    """Return the percentage sensors eligible for monitoring."""
+    return {
+        state.entity_id: state
+        for state in hass.states.async_all("sensor")
+        if state.attributes.get(ATTR_DEVICE_CLASS) == SensorDeviceClass.BATTERY
         and state.attributes.get(ATTR_UNIT_OF_MEASUREMENT) == PERCENTAGE
-    )
+    }
 
 
-def _battery_level(state: State) -> float | None:
+def battery_level(state: State) -> float | None:
+    """Return a valid battery percentage, if available."""
     try:
         level = float(state.state)
     except ValueError:
@@ -43,6 +53,7 @@ class BatteryMonitor:
         settings = {**entry.data, **entry.options}
         self.topic = settings[CONF_TOPIC]
         self.threshold = settings[CONF_THRESHOLD]
+        self.excluded_batteries = frozenset(settings.get(CONF_EXCLUDED_BATTERIES, []))
         self.store = Store[dict[str, dict[str, str]]](hass, 1, f"{DOMAIN}.{entry.entry_id}")
         self.alerts: dict[str, dict[str, str]] = {}
         self.lock = asyncio.Lock()
@@ -62,14 +73,12 @@ class BatteryMonitor:
 
         async with self.lock:
             registry = er.async_get(self.hass)
-            batteries = {
-                state.entity_id: state
-                for state in self.hass.states.async_all("sensor")
-                if _is_battery(state)
-            }
+            batteries = async_battery_states(self.hass)
             previous = self.alerts.copy()
             for entity_id, state in batteries.items():
-                level = _battery_level(state)
+                if entity_id in self.excluded_batteries:
+                    continue
+                level = battery_level(state)
                 if level is None or level > self.threshold:
                     continue
                 payload = {
@@ -90,18 +99,19 @@ class BatteryMonitor:
                     self.alerts[entity_id] = payload
 
             for entity_id in list(self.alerts):
-                if entity_id in batteries:
-                    level = _battery_level(batteries[entity_id])
-                    if level is None or level <= self.threshold:
-                        continue
-                else:
-                    state = self.hass.states.get(entity_id)
-                    if state is None:
-                        registered = registry.async_get(entity_id)
-                        if registered is not None and not registered.disabled:
+                if entity_id not in self.excluded_batteries:
+                    if entity_id in batteries:
+                        level = battery_level(batteries[entity_id])
+                        if level is None or level <= self.threshold:
                             continue
-                    elif state.state in ("unknown", "unavailable"):
-                        continue
+                    else:
+                        state = self.hass.states.get(entity_id)
+                        if state is None:
+                            registered = registry.async_get(entity_id)
+                            if registered is not None and not registered.disabled:
+                                continue
+                        elif state.state in ("unknown", "unavailable"):
+                            continue
                 if await self.async_notify("dismiss", entity_id):
                     del self.alerts[entity_id]
 

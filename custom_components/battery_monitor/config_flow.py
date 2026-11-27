@@ -9,7 +9,9 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
 )
 
+from . import async_battery_states, battery_level
 from .const import (
+    CONF_EXCLUDED_BATTERIES,
     CONF_THRESHOLD,
     CONF_TOPIC,
     DEFAULT_THRESHOLD,
@@ -27,8 +29,8 @@ def _topic_options(hass):
     ]
 
 
-def _schema(topics, settings):
-    """Build the form with the currently available topics."""
+def _schema(topics, settings, batteries=None):
+    """Build the form with the available topics and any discovered batteries."""
     topic_ids = {topic["value"] for topic in topics}
     topic = settings.get(CONF_TOPIC)
     topic_field = (
@@ -36,16 +38,37 @@ def _schema(topics, settings):
         if topic in topic_ids
         else vol.Required(CONF_TOPIC)
     )
-    return vol.Schema(
-        {
-            topic_field: SelectSelector(
-                SelectSelectorConfig(options=topics, mode=SelectSelectorMode.DROPDOWN)
-            ),
-            vol.Required(
-                CONF_THRESHOLD, default=settings.get(CONF_THRESHOLD, DEFAULT_THRESHOLD)
-            ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
-        }
-    )
+    fields = {
+        topic_field: SelectSelector(
+            SelectSelectorConfig(options=topics, mode=SelectSelectorMode.DROPDOWN)
+        ),
+        vol.Required(
+            CONF_THRESHOLD, default=settings.get(CONF_THRESHOLD, DEFAULT_THRESHOLD)
+        ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+    }
+    if batteries is not None:
+        excluded = settings.get(CONF_EXCLUDED_BATTERIES, [])
+        labels = {}
+        for entity_id, state in batteries.items():
+            level = battery_level(state)
+            reading = f"{level:g}%" if level is not None else "Unavailable"
+            labels[entity_id] = f"{state.name} · {reading} ({entity_id})"
+        for entity_id in excluded:
+            labels.setdefault(entity_id, f"{entity_id} (unavailable)")
+        if labels:
+            fields[vol.Required(CONF_EXCLUDED_BATTERIES, default=excluded)] = SelectSelector(
+                SelectSelectorConfig(
+                    options=[
+                        {"label": label, "value": entity_id}
+                        for entity_id, label in sorted(
+                            labels.items(), key=lambda item: item[1].casefold()
+                        )
+                    ],
+                    multiple=True,
+                    mode=SelectSelectorMode.LIST,
+                )
+            )
+    return vol.Schema(fields)
 
 
 class BatteryMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -77,7 +100,7 @@ class BatteryMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class BatteryMonitorOptionsFlow(config_entries.OptionsFlow):
-    """Change the notification topic or threshold."""
+    """Change the notification topic, threshold, or exclusions."""
 
     async def async_step_init(self, user_input=None):
         """Show the current settings."""
@@ -91,6 +114,8 @@ class BatteryMonitorOptionsFlow(config_entries.OptionsFlow):
         settings = {**self.config_entry.data, **self.config_entry.options}
         return self.async_show_form(
             step_id="init",
-            data_schema=_schema(topics, user_input or settings),
+            data_schema=_schema(
+                topics, user_input or settings, async_battery_states(self.hass)
+            ),
             errors={"topic": "topic_missing"} if user_input is not None else {},
         )
