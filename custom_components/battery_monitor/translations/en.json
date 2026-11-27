@@ -1,0 +1,37 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Battery Monitor",
+        "data": {
+          "topic": "Dashboard notification topic",
+          "threshold": "Low-battery threshold (%)"
+        }
+      }
+    },
+    "error": {
+      "topic_missing": "That topic is no longer available. Select another topic."
+    },
+    "abort": {
+      "already_configured": "Battery Monitor is already set up.",
+      "no_topics": "Create a topic in Dashboard Notifications, then add Battery Monitor again."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Battery Monitor settings",
+        "data": {
+          "topic": "Dashboard notification topic",
+          "threshold": "Low-battery threshold (%)"
+        }
+      }
+    },
+    "error": {
+      "topic_missing": "That topic is no longer available. Select another topic."
+    },
+    "abort": {
+      "no_topics": "Create a topic in Dashboard Notifications, then reopen Battery Monitor settings."
+    }
+  }
+}

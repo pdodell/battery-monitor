@@ -1,0 +1,12 @@
+{
+  "domain": "battery_monitor",
+  "name": "Battery Monitor",
+  "codeowners": ["@pdodell"],
+  "config_flow": true,
+  "dependencies": ["dashboard_notifications"],
+  "documentation": "https://github.com/pdodell/battery-monitor#readme",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/pdodell/battery-monitor/issues",
+  "version": "0.1.0"
+}
