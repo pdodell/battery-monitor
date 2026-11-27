@@ -5,12 +5,14 @@
         "title": "Set up Battery Monitor",
         "data": {
           "topic": "Dashboard notification topic",
-          "threshold": "Low-battery threshold (%)"
+          "threshold": "Battery warning threshold (%)",
+          "critical_threshold": "Critical battery threshold (%)"
         }
       }
     },
     "error": {
-      "topic_missing": "That topic is no longer available. Select another topic."
+      "topic_missing": "That topic is no longer available. Select another topic.",
+      "critical_above_warning": "The critical threshold must be at or below the warning threshold."
     },
     "abort": {
       "already_configured": "Battery Monitor is already set up.",
@@ -23,7 +25,8 @@
         "title": "Battery Monitor settings",
         "data": {
           "topic": "Dashboard notification topic",
-          "threshold": "Low-battery threshold (%)",
+          "threshold": "Battery warning threshold (%)",
+          "critical_threshold": "Critical battery threshold (%)",
           "excluded_batteries": "Battery sensors"
         },
         "data_description": {
@@ -32,7 +35,8 @@
       }
     },
     "error": {
-      "topic_missing": "That topic is no longer available. Select another topic."
+      "topic_missing": "That topic is no longer available. Select another topic.",
+      "critical_above_warning": "The critical threshold must be at or below the warning threshold."
     },
     "abort": {
       "no_topics": "Create a topic in Dashboard Notifications, then reopen Battery Monitor settings."

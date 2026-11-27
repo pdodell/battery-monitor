@@ -11,9 +11,11 @@ from homeassistant.helpers.selector import (
 
 from . import async_battery_states, battery_level
 from .const import (
+    CONF_CRITICAL_THRESHOLD,
     CONF_EXCLUDED_BATTERIES,
     CONF_THRESHOLD,
     CONF_TOPIC,
+    DEFAULT_CRITICAL_THRESHOLD,
     DEFAULT_THRESHOLD,
     DOMAIN,
     NOTIFICATIONS_DOMAIN,
@@ -45,6 +47,10 @@ def _schema(topics, settings, batteries=None):
         vol.Required(
             CONF_THRESHOLD, default=settings.get(CONF_THRESHOLD, DEFAULT_THRESHOLD)
         ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+        vol.Required(
+            CONF_CRITICAL_THRESHOLD,
+            default=settings.get(CONF_CRITICAL_THRESHOLD, DEFAULT_CRITICAL_THRESHOLD),
+        ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
     }
     if batteries is not None:
         excluded = settings.get(CONF_EXCLUDED_BATTERIES, [])
@@ -71,6 +77,18 @@ def _schema(topics, settings, batteries=None):
     return vol.Schema(fields)
 
 
+def _errors(topics, user_input):
+    """Validate the selected topic and the order of the thresholds."""
+    if user_input is None:
+        return {}
+    errors = {}
+    if user_input[CONF_TOPIC] not in {topic["value"] for topic in topics}:
+        errors[CONF_TOPIC] = "topic_missing"
+    if user_input[CONF_CRITICAL_THRESHOLD] > user_input[CONF_THRESHOLD]:
+        errors[CONF_CRITICAL_THRESHOLD] = "critical_above_warning"
+    return errors
+
+
 class BatteryMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Set up one monitor for this Home Assistant instance."""
 
@@ -88,14 +106,13 @@ class BatteryMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         topics = _topic_options(self.hass)
         if not topics:
             return self.async_abort(reason="no_topics")
-        if user_input is not None and user_input[CONF_TOPIC] in {
-            topic["value"] for topic in topics
-        }:
+        errors = _errors(topics, user_input)
+        if user_input is not None and not errors:
             return self.async_create_entry(title="Battery Monitor", data=user_input)
         return self.async_show_form(
             step_id="user",
             data_schema=_schema(topics, user_input or {}),
-            errors={"topic": "topic_missing"} if user_input is not None else {},
+            errors=errors,
         )
 
 
@@ -107,9 +124,8 @@ class BatteryMonitorOptionsFlow(config_entries.OptionsFlow):
         topics = _topic_options(self.hass)
         if not topics:
             return self.async_abort(reason="no_topics")
-        if user_input is not None and user_input[CONF_TOPIC] in {
-            topic["value"] for topic in topics
-        }:
+        errors = _errors(topics, user_input)
+        if user_input is not None and not errors:
             return self.async_create_entry(title="", data=user_input)
         settings = {**self.config_entry.data, **self.config_entry.options}
         return self.async_show_form(
@@ -117,5 +133,5 @@ class BatteryMonitorOptionsFlow(config_entries.OptionsFlow):
             data_schema=_schema(
                 topics, user_input or settings, async_battery_states(self.hass)
             ),
-            errors={"topic": "topic_missing"} if user_input is not None else {},
+            errors=errors,
         )

@@ -15,9 +15,11 @@ from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.storage import Store
 
 from .const import (
+    CONF_CRITICAL_THRESHOLD,
     CONF_EXCLUDED_BATTERIES,
     CONF_THRESHOLD,
     CONF_TOPIC,
+    DEFAULT_CRITICAL_THRESHOLD,
     DOMAIN,
     NOTIFICATIONS_DOMAIN,
 )
@@ -52,10 +54,13 @@ class BatteryMonitor:
         self.hass = hass
         settings = {**entry.data, **entry.options}
         self.topic = settings[CONF_TOPIC]
-        self.threshold = settings[CONF_THRESHOLD]
+        self.critical_threshold = settings.get(
+            CONF_CRITICAL_THRESHOLD, DEFAULT_CRITICAL_THRESHOLD
+        )
+        self.alert_threshold = max(settings[CONF_THRESHOLD], self.critical_threshold)
         self.excluded_batteries = frozenset(settings.get(CONF_EXCLUDED_BATTERIES, []))
-        self.store = Store[dict[str, dict[str, str]]](hass, 1, f"{DOMAIN}.{entry.entry_id}")
-        self.alerts: dict[str, dict[str, str]] = {}
+        self.store = Store[dict[str, dict[str, str | bool]]](hass, 1, f"{DOMAIN}.{entry.entry_id}")
+        self.alerts: dict[str, dict[str, str | bool]] = {}
         self.lock = asyncio.Lock()
         self.stopping = False
         self.started = False
@@ -79,12 +84,17 @@ class BatteryMonitor:
                 if entity_id in self.excluded_batteries:
                     continue
                 level = battery_level(state)
-                if level is None or level > self.threshold:
+                if level is None or level > self.alert_threshold:
                     continue
+                critical = level <= self.critical_threshold
+                title = "Critical battery" if critical else "Low battery"
+                percentage = str(level).removesuffix(".0")
                 payload = {
                     "topic": self.topic,
-                    "title": f"Low battery: {state.name}",
-                    "message": f"{state.name} battery is at {level:g}%.",
+                    "title": f"{title}: {state.name}",
+                    "message": f"{state.name} battery is at {percentage}%.",
+                    "severity": "error" if critical else "warning",
+                    "show_timestamp": False,
                 }
                 if self.alerts.get(entity_id) == payload:
                     continue
@@ -92,7 +102,6 @@ class BatteryMonitor:
                     "create",
                     entity_id,
                     **payload,
-                    severity="warning",
                     icon="mdi:battery-low",
                     persistent=True,
                 ):
@@ -102,7 +111,7 @@ class BatteryMonitor:
                 if entity_id not in self.excluded_batteries:
                     if entity_id in batteries:
                         level = battery_level(batteries[entity_id])
-                        if level is None or level <= self.threshold:
+                        if level is None or level <= self.alert_threshold:
                             continue
                     else:
                         state = self.hass.states.get(entity_id)
